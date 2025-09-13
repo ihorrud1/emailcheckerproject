@@ -370,3 +370,13 @@ function extractFolderNames(boxes, prefix = '') {
 }
 
 // Экспортируем все функции, которые будут использоваться в
+module.exports = {
+    testImapConnection,
+    testSmtpConnection,
+    testPop3Connection,
+    fetchImapEmails,
+    fetchPop3Emails,
+    sendEmail,
+    markAsRead,
+    getFolders
+};
