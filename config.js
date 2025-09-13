@@ -1,6 +1,6 @@
-// config.js - Конфигурация для вашего API
+// config.js
+
 module.exports = {
-    // Настройки вашего API
     API: {
         baseURL: process.env.API_BASE_URL || 'https://your-api-domain.com/api',
         apiKey: process.env.API_KEY || 'your-api-key-here',
@@ -86,7 +86,7 @@ module.exports = {
             name: 'Gmail',
             imap: { host: 'imap.gmail.com', port: 993, secure: true },
             pop3: { host: 'pop.gmail.com', port: 995, secure: true },
-            smtp: { host: 'smtp.gmail.com', port: 587, secure: false },
+            smtp: { host: 'smtp.gmail.com', port: 465, secure: true },
             requiresAppPassword: true,
             authURL: 'https://myaccount.google.com/apppasswords'
         },
@@ -102,15 +102,39 @@ module.exports = {
             name: 'Yandex',
             imap: { host: 'imap.yandex.ru', port: 993, secure: true },
             pop3: { host: 'pop.yandex.ru', port: 995, secure: true },
-            smtp: { host: 'smtp.yandex.ru', port: 587, secure: false },
+            smtp: { host: 'smtp.yandex.ru', port: 465, secure: true },
             requiresAppPassword: true,
             authURL: 'https://passport.yandex.ru/profile/app-passwords'
+        },
+        mailru: {
+            name: 'Mail.ru',
+            imap: { host: 'imap.mail.ru', port: 993, secure: true },
+            pop3: { host: 'pop.mail.ru', port: 995, secure: true },
+            smtp: { host: 'smtp.mail.ru', port: 465, secure: true },
+            requiresAppPassword: true,
+            authURL: 'https://account.mail.ru/user/2-step-auth/passwords/'
+        },
+        gmx: {
+            name: 'GMX',
+            imap: { host: 'imap.gmx.com', port: 993, secure: true },
+            pop3: { host: 'pop.gmx.com', port: 995, secure: true },
+            smtp: { host: 'mail.gmx.com', port: 465, secure: true },
+            requiresAppPassword: false,
+            authURL: ''
+        },
+        zoho: {
+            name: 'Zoho',
+            imap: { host: 'imap.zoho.com', port: 993, secure: true },
+            pop3: { host: 'pop.zoho.com', port: 995, secure: true },
+            smtp: { host: 'smtp.zoho.com', port: 465, secure: true },
+            requiresAppPassword: true,
+            authURL: 'https://accounts.zoho.com/apppasswords'
         },
         yahoo: {
             name: 'Yahoo',
             imap: { host: 'imap.mail.yahoo.com', port: 993, secure: true },
             pop3: { host: 'pop.mail.yahoo.com', port: 995, secure: true },
-            smtp: { host: 'smtp.mail.yahoo.com', port: 587, secure: false },
+            smtp: { host: 'smtp.mail.yahoo.com', port: 465, secure: true },
             requiresAppPassword: true,
             authURL: 'https://login.yahoo.com/account/security/app-passwords'
         },
