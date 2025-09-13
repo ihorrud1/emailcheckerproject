@@ -1,0 +1,733 @@
+        //<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-align: center;
+            margin: -20px -20px 20px -20px;
+            padding: 20px;
+            border-radius: 10px 10px 0 0;
+        }
+        
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #eee;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        
+        .tab:hover {
+            background: #f0f0f0;
+        }
+        
+        .tab.active {
+            border-bottom-color: #667eea;
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-success {
+            background: #28a745;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+        }
+        
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .accounts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .account-card {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            transition: transform 0.2s;
+        }
+        
+        .account-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .account-name {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        
+        .account-email {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        
+        .status.online {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status.offline {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📧 IMAP/SMTP Email Client</h1>
+            <p>Управление множественными email аккаунтами</p>
+        </div>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('connect')">Подключение</div>
+            <div class="tab" onclick="switchTab('inbox')">Входящие</div>
+            <div class="tab" onclick="switchTab('send')">Отправить</div>
+            <div class="tab" onclick="switchTab('accounts')">Аккаунты</div>
+        </div>
+        
+        <!-- Подключение -->
+        <div id="connect" class="tab-content active">
+            <h3>Настройка IMAP/SMTP</h3>
+            
+            <div class="form-group">
+                <label>Провайдер:</label>
+                <select id="provider" onchange="setProviderSettings()">
+                    <option value="custom">Настроить вручную</option>
+                    <option value="gmail">Gmail</option>
+                    <option value="outlook">Outlook/Hotmail</option>
+                    <option value="yandex">Yandex</option>
+                    <option value="yahoo">Yahoo</option>
+                </select>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div>
+                    <h4>IMAP (Получение почты)</h4>
+                    <div class="form-group">
+                        <label>IMAP Сервер:</label>
+                        <input type="text" id="imapHost" placeholder="imap.gmail.com">
+                    </div>
+                    <div class="form-group">
+                        <label>IMAP Порт:</label>
+                        <input type="number" id="imapPort" value="993">
+                    </div>
+                </div>
+                
+                <div>
+                    <h4>SMTP (Отправка почты)</h4>
+                    <div class="form-group">
+                        <label>SMTP Сервер:</label>
+                        <input type="text" id="smtpHost" placeholder="smtp.gmail.com">
+                    </div>
+                    <div class="form-group">
+                        <label>SMTP Порт:</label>
+                        <input type="number" id="smtpPort" value="587">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Email:</label>
+                <input type="email" id="email" placeholder="your@email.com">
+            </div>
+            
+            <div class="form-group">
+                <label>Пароль:</label>
+                <input type="password" id="password" placeholder="Пароль или App Password">
+            </div>
+            
+            <button onclick="testConnection()">🔗 Проверить подключение</button>
+            <button onclick="saveAccount()" class="btn-success">💾 Сохранить аккаунт</button>
+        </div>
+        
+        <!-- Входящие -->
+        <div id="inbox" class="tab-content">
+            <h3>Входящие сообщения</h3>
+            
+            <div class="form-group">
+                <label>Выберите аккаунт:</label>
+                <select id="selectedAccount">
+                    <option value="">Выберите аккаунт</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Папка:</label>
+                <select id="folderSelect">
+                    <option value="INBOX">Входящие</option>
+                    <option value="SENT">Отправленные</option>
+                    <option value="DRAFTS">Черновики</option>
+                    <option value="SPAM">Спам</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Количество писем:</label>
+                <input type="number" id="messageCount" value="10" min="1" max="50">
+            </div>
+            
+            <button onclick="fetchEmails()">📨 Получить письма</button>
+            <button onclick="markAsRead()" class="btn-secondary">✓ Отметить как прочитанные</button>
+        </div>
+        
+        <!-- Отправить -->
+        <div id="send" class="tab-content">
+            <h3>Отправить письмо</h3>
+            
+            <div class="form-group">
+                <label>От (аккаунт):</label>
+                <select id="fromAccount">
+                    <option value="">Выберите аккаунт</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Кому:</label>
+                <input type="email" id="toEmail" placeholder="recipient@email.com">
+            </div>
+            
+            <div class="form-group">
+                <label>Тема:</label>
+                <input type="text" id="subject" placeholder="Тема письма">
+            </div>
+            
+            <div class="form-group">
+                <label>Сообщение:</label>
+                <textarea id="message" placeholder="Текст сообщения..."></textarea>
+            </div>
+            
+            <button onclick="sendEmail()">📤 Отправить</button>
+            <button onclick="saveDraft()" class="btn-secondary">💾 Сохранить черновик</button>
+        </div>
+        
+        <!-- Аккаунты -->
+        <div id="accounts" class="tab-content">
+            <h3>Управление аккаунтами</h3>
+            
+            <div class="accounts" id="accountsList">
+                <!-- Аккаунты будут добавлены через JavaScript -->
+            </div>
+            
+            <button onclick="checkAllAccounts()" class="btn-success">🔍 Проверить все аккаунты</button>
+            <button onclick="clearAllAccounts()" class="btn-danger">🗑 Очистить все</button>
+        </div>
+        
+        <div class="result" id="result" style="display: none;">
+            <!-- Результат операций -->
+        </div>
+    </div>
+
+    <script>
+        let accounts = JSON.parse(localStorage.getItem('emailAccounts') || '[]');
+        
+        // Переключение табов
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+            
+            if (tabName === 'accounts') {
+                displayAccounts();
+            }
+            updateAccountSelects();
+        }
+        
+        // Настройки провайдеров
+        function setProviderSettings() {
+            const provider = document.getElementById('provider').value;
+            const settings = {
+                gmail: {
+                    imapHost: 'imap.gmail.com',
+                    imapPort: 993,
+                    smtpHost: 'smtp.gmail.com',
+                    smtpPort: 587
+                },
+                outlook: {
+                    imapHost: 'outlook.office365.com',
+                    imapPort: 993,
+                    smtpHost: 'smtp-mail.outlook.com',
+                    smtpPort: 587
+                },
+                yandex: {
+                    imapHost: 'imap.yandex.ru',
+                    imapPort: 993,
+                    smtpHost: 'smtp.yandex.ru',
+                    smtpPort: 587
+                },
+                yahoo: {
+                    imapHost: 'imap.mail.yahoo.com',
+                    imapPort: 993,
+                    smtpHost: 'smtp.mail.yahoo.com',
+                    smtpPort: 587
+                }
+            };
+            
+            if (settings[provider]) {
+                document.getElementById('imapHost').value = settings[provider].imapHost;
+                document.getElementById('imapPort').value = settings[provider].imapPort;
+                document.getElementById('smtpHost').value = settings[provider].smtpHost;
+                document.getElementById('smtpPort').value = settings[provider].smtpPort;
+            }
+        }
+        
+        // Сохранить аккаунт
+        function saveAccount() {
+            const account = {
+                id: Date.now(),
+                email: document.getElementById('email').value,
+                password: document.getElementById('password').value,
+                imapHost: document.getElementById('imapHost').value,
+                imapPort: parseInt(document.getElementById('imapPort').value),
+                smtpHost: document.getElementById('smtpHost').value,
+                smtpPort: parseInt(document.getElementById('smtpPort').value),
+                provider: document.getElementById('provider').value,
+                status: 'offline',
+                lastCheck: null
+            };
+            
+            if (!account.email || !account.password) {
+                showResult('❌ Заполните email и пароль!', 'error');
+                return;
+            }
+            
+            // Проверка на дубликат
+            const existing = accounts.find(a => a.email === account.email);
+            if (existing) {
+                if (confirm('Аккаунт уже существует. Обновить настройки?')) {
+                    Object.assign(existing, account);
+                } else {
+                    return;
+                }
+            } else {
+                accounts.push(account);
+            }
+            
+            localStorage.setItem('emailAccounts', JSON.stringify(accounts));
+            showResult(`✅ Аккаунт ${account.email} сохранен!`, 'success');
+            updateAccountSelects();
+        }
+        
+        // Тестирование подключения
+        async function testConnection() {
+            const data = {
+                email: document.getElementById('email').value,
+                password: document.getElementById('password').value,
+                imapHost: document.getElementById('imapHost').value,
+                imapPort: parseInt(document.getElementById('imapPort').value),
+                smtpHost: document.getElementById('smtpHost').value,
+                smtpPort: parseInt(document.getElementById('smtpPort').value)
+            };
+            
+            showResult('🔍 Проверка подключения...', 'info');
+            
+            try {
+                const response = await fetch('/api/test-connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showResult(`✅ Подключение успешно!\nIMAP: ${result.imap ? '✓' : '✗'}\nSMTP: ${result.smtp ? '✓' : '✗'}`, 'success');
+                } else {
+                    showResult(`❌ Ошибка подключения:\n${result.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Ошибка: ${error.message}`, 'error');
+            }
+        }
+        
+        // Получение писем
+        async function fetchEmails() {
+            const accountEmail = document.getElementById('selectedAccount').value;
+            const account = accounts.find(a => a.email === accountEmail);
+            
+            if (!account) {
+                showResult('❌ Выберите аккаунт!', 'error');
+                return;
+            }
+            
+            const data = {
+                ...account,
+                folder: document.getElementById('folderSelect').value,
+                count: parseInt(document.getElementById('messageCount').value)
+            };
+            
+            showResult('📨 Получение писем...', 'info');
+            
+            try {
+                const response = await fetch('/api/fetch-emails', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showResult(`✅ Получено ${result.emails.length} писем:\n\n${formatEmails(result.emails)}`, 'success');
+                } else {
+                    showResult(`❌ Ошибка: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Ошибка: ${error.message}`, 'error');
+            }
+        }
+        
+        // Отправка письма
+        async function sendEmail() {
+            const accountEmail = document.getElementById('fromAccount').value;
+            const account = accounts.find(a => a.email === accountEmail);
+            
+            if (!account) {
+                showResult('❌ Выберите аккаунт отправителя!', 'error');
+                return;
+            }
+            
+            const data = {
+                ...account,
+                to: document.getElementById('toEmail').value,
+                subject: document.getElementById('subject').value,
+                text: document.getElementById('message').value
+            };
+            
+            if (!data.to || !data.subject || !data.text) {
+                showResult('❌ Заполните все поля!', 'error');
+                return;
+            }
+            
+            showResult('📤 Отправка письма...', 'info');
+            
+            try {
+                const response = await fetch('/api/send-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showResult(`✅ Письмо отправлено!\nОт: ${data.email}\nКому: ${data.to}\nТема: ${data.subject}`, 'success');
+                    // Очистить форму
+                    document.getElementById('toEmail').value = '';
+                    document.getElementById('subject').value = '';
+                    document.getElementById('message').value = '';
+                } else {
+                    showResult(`❌ Ошибка отправки: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Ошибка: ${error.message}`, 'error');
+            }
+        }
+        
+        // Показать результат
+        function showResult(text, type) {
+            const result = document.getElementById('result');
+            result.style.display = 'block';
+            result.textContent = text;
+            result.className = 'result ' + type;
+            
+            // Прокрутка к результату
+            result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        
+        // Форматирование списка писем
+        function formatEmails(emails) {
+            return emails.map((email, index) => {
+                return `${index + 1}. От: ${email.from}\n   Тема: ${email.subject}\n   Дата: ${email.date}\n   ${email.unread ? '[НЕ ПРОЧИТАНО]' : '[ПРОЧИТАНО]'}\n`;
+            }).join('\n');
+        }
+        
+        // Обновить списки аккаунтов
+        function updateAccountSelects() {
+            const selects = ['selectedAccount', 'fromAccount'];
+            selects.forEach(selectId => {
+                const select = document.getElementById(selectId);
+                const currentValue = select.value;
+                select.innerHTML = '<option value="">Выберите аккаунт</option>';
+                
+                accounts.forEach(account => {
+                    const option = document.createElement('option');
+                    option.value = account.email;
+                    option.textContent = `${account.email} (${account.provider})`;
+                    select.appendChild(option);
+                });
+                
+                select.value = currentValue;
+            });
+        }
+        
+        // Показать аккаунты
+        function displayAccounts() {
+            const container = document.getElementById('accountsList');
+            container.innerHTML = '';
+            
+            if (accounts.length === 0) {
+                container.innerHTML = '<p>Нет сохраненных аккаунтов. Добавьте аккаунт во вкладке "Подключение".</p>';
+                return;
+            }
+            
+            accounts.forEach(account => {
+                const card = document.createElement('div');
+                card.className = 'account-card';
+                card.innerHTML = `
+                    <div class="account-name">${account.email}</div>
+                    <div class="account-email">Провайдер: ${account.provider}</div>
+                    <div class="account-email">IMAP: ${account.imapHost}:${account.imapPort}</div>
+                    <div class="account-email">SMTP: ${account.smtpHost}:${account.smtpPort}</div>
+                    <span class="status ${account.status}">${account.status === 'online' ? 'Подключен' : 'Не подключен'}</span>
+                    <div style="margin-top: 10px;">
+                        <button onclick="removeAccount('${account.email}')" class="btn-danger" style="font-size: 12px; padding: 5px 10px;">Удалить</button>
+                        <button onclick="testAccountConnection('${account.email}')" class="btn-secondary" style="font-size: 12px; padding: 5px 10px;">Проверить</button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+        
+        // Удалить аккаунт
+        function removeAccount(email) {
+            if (confirm(`Удалить аккаунт ${email}?`)) {
+                accounts = accounts.filter(a => a.email !== email);
+                localStorage.setItem('emailAccounts', JSON.stringify(accounts));
+                displayAccounts();
+                updateAccountSelects();
+                showResult(`✅ Аккаунт ${email} удален!`, 'success');
+            }
+        }
+        
+        // Проверить подключение аккаунта
+        async function testAccountConnection(email) {
+            const account = accounts.find(a => a.email === email);
+            if (!account) return;
+            
+            showResult(`🔍 Проверка ${email}...`, 'info');
+            
+            try {
+                const response = await fetch('/api/test-connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(account)
+                });
+                
+                const result = await response.json();
+                account.status = result.success ? 'online' : 'offline';
+                account.lastCheck = new Date().toLocaleString();
+                
+                localStorage.setItem('emailAccounts', JSON.stringify(accounts));
+                displayAccounts();
+                
+                if (result.success) {
+                    showResult(`✅ ${email} - подключение успешно!`, 'success');
+                } else {
+                    showResult(`❌ ${email} - ошибка: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ ${email} - ошибка: ${error.message}`, 'error');
+            }
+        }
+        
+        // Проверить все аккаунты
+        async function checkAllAccounts() {
+            showResult('🔍 Проверка всех аккаунтов...', 'info');
+            
+            for (const account of accounts) {
+                await testAccountConnection(account.email);
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Задержка между проверками
+            }
+            
+            const online = accounts.filter(a => a.status === 'online').length;
+            const total = accounts.length;
+            showResult(`✅ Проверка завершена: ${online}/${total} аккаунтов онлайн`, 'success');
+        }
+        
+        // Очистить все аккаунты
+        function clearAllAccounts() {
+            if (confirm('Удалить ВСЕ сохраненные аккаунты?')) {
+                accounts = [];
+                localStorage.removeItem('emailAccounts');
+                displayAccounts();
+                updateAccountSelects();
+                showResult('✅ Все аккаунты удалены!', 'success');
+            }
+        }
+        
+        // Сохранить черновик
+        function saveDraft() {
+            const draft = {
+                to: document.getElementById('toEmail').value,
+                subject: document.getElementById('subject').value,
+                message: document.getElementById('message').value,
+                saved: new Date().toLocaleString()
+            };
+            
+            const drafts = JSON.parse(localStorage.getItem('emailDrafts') || '[]');
+            drafts.push(draft);
+            localStorage.setItem('emailDrafts', JSON.stringify(drafts));
+            
+            showResult('✅ Черновик сохранен!', 'success');
+        }
+        
+        // Отметить как прочитанные
+        async function markAsRead() {
+            showResult('Функция "Отметить как прочитанные" будет реализована в server.js', 'info');
+        }
+        
+        // Вызов API для конкретного аккаунта
+        async function callAPIForAccount(email) {
+            const account = accounts.find(a => a.email === email);
+            if (!account) return;
+            
+            showResult(`🔗 Вызов API для ${email}...`, 'info');
+            
+            try {
+                const response = await fetch('/api/custom-api-call', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: email,
+                        action: 'account_check',
+                        accountData: account,
+                        timestamp: new Date().toISOString()
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showResult(`✅ API для ${email} успешно вызван!\nОтвет: ${JSON.stringify(result.data, null, 2)}`, 'success');
+                } else {
+                    showResult(`❌ Ошибка API для ${email}: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Ошибка вызова API для ${email}: ${error.message}`, 'error');
+            }
+        }
+        
+        // Инициализация (обновлено)
+        document.addEventListener('DOMContentLoaded', function() {
+            updateAccountSelects();
+            setProviderSettings(); // Установить настройки Gmail по умолчанию
+            
+            // Добавить обработчик для протокола получения
+            document.getElementById('fetchProtocol').addEventListener('change', toggleFetchProtocol);
+            toggleFetchProtocol(); // Инициальная настройка
+        });
+    </script>
+</body>
+</html>
