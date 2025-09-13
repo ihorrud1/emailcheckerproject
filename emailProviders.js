@@ -1,27 +1,28 @@
-// emailProviders.js
+// emailProviders.js — Автоматическое определение провайдера по email
+
 const config = require('./config');
 
-const providers = config.PROVIDERS;
-
-function getProviderSettings(email) {
-    const domain = email.split('@')[1].toLowerCase();
-
-    // Поиск провайдера по домену в списке известных
-    const providerKey = Object.keys(providers).find(key => {
-        const provider = providers[key];
-        // Проверяем, содержит ли хост IMAP или POP3 домен в имени
-        return (provider.imap && provider.imap.host.includes(domain)) ||
-               (provider.pop3 && provider.pop3.host.includes(domain));
-    });
-
-    if (providerKey) {
-        return providers[providerKey];
-    }
-
-    // Если провайдер не найден, возвращаем null
-    return null;
+function getDomain(email) {
+    return (email || '').toLowerCase().split('@')[1] || '';
 }
 
-module.exports = {
-    getProviderSettings
-};
+function getProviderSettings(email) {
+    const domain = getDomain(email);
+    // Поддержка alias- и поддоменов, например, yandex.ua, mail.ua, gmx.net и др.
+    if (domain.endsWith('gmail.com')) return config.PROVIDERS.gmail;
+    if (domain.endsWith('yandex.ru') || domain.endsWith('yandex.com') || domain.endsWith('yandex.ua')) return config.PROVIDERS.yandex;
+    if (domain.endsWith('mail.ru') || domain.endsWith('inbox.ru') || domain.endsWith('bk.ru') || domain.endsWith('list.ru')) return config.PROVIDERS.mailru;
+    if (domain.endsWith('gmx.com') || domain.endsWith('gmx.net')) return config.PROVIDERS.gmx;
+    if (domain.endsWith('zoho.com') || domain.endsWith('zoho.eu')) return config.PROVIDERS.zoho;
+    if (domain.endsWith('yahoo.com') || domain.endsWith('yahoo.co.uk')) return config.PROVIDERS.yahoo;
+    if (
+        domain.endsWith('outlook.com') ||
+        domain.endsWith('hotmail.com') ||
+        domain.endsWith('live.com') ||
+        domain.endsWith('office365.com')
+    ) return config.PROVIDERS.outlook;
+    // по умолчанию — кастомный сервер
+    return config.PROVIDERS.custom;
+}
+
+module.exports = { getProviderSettings };
