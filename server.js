@@ -3,7 +3,7 @@ const { body, validationResult } = require('express-validator');
 const path = require('path');
 const logger = require('./logger');
 const { getProviderSettings } = require('./emailProviders');
-const { testImapConnection, testSmtpConnection, fetchEmails, sendEmail, markAsRead, getFolders } = require('./emailUtils');
+const { testImapConnection, testPop3Connection, testSmtpConnection, fetchImapEmails, fetchPop3Emails, sendEmail, markAsRead, getFolders } = require('./emailUtils');
 const { callCustomApi, logActivity } = require('./apiClient');
 
 const app = express();
@@ -50,29 +50,45 @@ app.post('/api/test-connection', [
         return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { email, password, imapHost, imapPort, smtpHost, smtpPort } = req.body;
+    const { email, password, fetchProtocol, imapHost, imapPort, pop3Host, pop3Port, smtpHost, smtpPort } = req.body;
+    let fetchResult = false;
+    let smtpResult = false;
     let errs = [];
 
     const providerSettings = getProviderSettings(email);
     const finalImapHost = providerSettings ? providerSettings.imap.host : imapHost;
     const finalImapPort = providerSettings ? providerSettings.imap.port : imapPort;
+    const finalPop3Host = providerSettings ? providerSettings.pop3.host : pop3Host;
+    const finalPop3Port = providerSettings ? providerSettings.pop3.port : pop3Port;
     const finalSmtpHost = providerSettings ? providerSettings.smtp.host : smtpHost;
     const finalSmtpPort = providerSettings ? providerSettings.smtp.port : smtpPort;
 
-    if (!finalImapHost || !finalSmtpHost) {
-        logger.error(`Не удалось определить настройки для ${email}.`);
-        return res.json({ success: false, error: 'Не удалось определить настройки сервера. Пожалуйста, укажите хост и порт вручную.' });
-    }
-
-    let imapResult = false;
-    let smtpResult = false;
-
-    try {
-        await testImapConnection({ email, password, imapHost: finalImapHost, imapPort: finalImapPort });
-        imapResult = true;
-    } catch (error) {
-        errs.push(`IMAP: ${error.message}`);
-        logger.error(`Ошибка IMAP для ${email}: ${error.message}`);
+    if (fetchProtocol === 'imap') {
+        if (!finalImapHost || !finalImapPort) {
+            logger.error(`Не удалось определить настройки IMAP для ${email}.`);
+            return res.json({ success: false, error: 'Не удалось определить настройки IMAP сервера. Пожалуйста, укажите хост и порт вручную.' });
+        }
+        try {
+            await testImapConnection({ email, password, imapHost: finalImapHost, imapPort: finalImapPort });
+            fetchResult = true;
+        } catch (error) {
+            errs.push(`IMAP: ${error.message}`);
+            logger.error(`Ошибка IMAP для ${email}: ${error.message}`);
+        }
+    } else if (fetchProtocol === 'pop3') {
+        if (!finalPop3Host || !finalPop3Port) {
+            logger.error(`Не удалось определить настройки POP3 для ${email}.`);
+            return res.json({ success: false, error: 'Не удалось определить настройки POP3 сервера. Пожалуйста, укажите хост и порт вручную.' });
+        }
+        try {
+            await testPop3Connection({ email, password, pop3Host: finalPop3Host, pop3Port: finalPop3Port });
+            fetchResult = true;
+        } catch (error) {
+            errs.push(`POP3: ${error.message}`);
+            logger.error(`Ошибка POP3 для ${email}: ${error.message}`);
+        }
+    } else {
+        errs.push('Неизвестный протокол получения.');
     }
 
     try {
@@ -83,16 +99,16 @@ app.post('/api/test-connection', [
         logger.error(`Ошибка SMTP для ${email}: ${error.message}`);
     }
 
-    if (imapResult && smtpResult) {
+    if (fetchResult && smtpResult) {
         logger.info(`Подключение для ${email} успешно протестировано.`);
-        await logActivity('connection_test_success', { email, imap: true, smtp: true });
+        await logActivity('connection_test_success', { email, [fetchProtocol]: true, smtp: true });
     } else {
-        await logActivity('connection_test_failed', { email, imap: imapResult, smtp: smtpResult, errors: errs.join(', ') });
+        await logActivity('connection_test_failed', { email, [fetchProtocol]: fetchResult, smtp: smtpResult, errors: errs.join(', ') });
     }
 
     res.json({
-        success: imapResult && smtpResult,
-        imap: imapResult,
+        success: fetchResult && smtpResult,
+        [fetchProtocol]: fetchResult,
         smtp: smtpResult,
         error: errs.length > 0 ? errs.join(', ') : null
     });
@@ -108,26 +124,37 @@ app.post('/api/fetch-emails', [
         return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { email, password, imapHost, imapPort, folder = 'INBOX', count = 10 } = req.body;
-    logger.info(`Пользователь ${email} пытается получить письма из папки "${folder}".`);
+    const { email, password, fetchProtocol, imapHost, imapPort, pop3Host, pop3Port, folder = 'INBOX', count = 10 } = req.body;
+    logger.info(`Пользователь ${email} пытается получить письма по протоколу ${fetchProtocol.toUpperCase()}.`);
     
     const providerSettings = getProviderSettings(email);
     const finalImapHost = providerSettings ? providerSettings.imap.host : imapHost;
     const finalImapPort = providerSettings ? providerSettings.imap.port : imapPort;
-
-    if (!finalImapHost) {
-        logger.error(`Не удалось определить настройки IMAP для ${email}.`);
-        return res.json({ success: false, error: 'Не удалось определить настройки IMAP сервера.' });
-    }
+    const finalPop3Host = providerSettings ? providerSettings.pop3.host : pop3Host;
+    const finalPop3Port = providerSettings ? providerSettings.pop3.port : pop3Port;
 
     try {
-        const emails = await fetchEmails({ email, password, imapHost: finalImapHost, imapPort: finalImapPort, folder, count });
-        logger.info(`Получено ${emails.length} писем для ${email}.`);
-        await logActivity('emails_fetched', { email, folder, count: emails.length });
+        let emails;
+        if (fetchProtocol === 'imap') {
+            if (!finalImapHost) {
+                return res.json({ success: false, error: 'Не удалось определить настройки IMAP сервера.' });
+            }
+            emails = await fetchImapEmails({ email, password, imapHost: finalImapHost, imapPort: finalImapPort, folder, count });
+        } else if (fetchProtocol === 'pop3') {
+            if (!finalPop3Host) {
+                return res.json({ success: false, error: 'Не удалось определить настройки POP3 сервера.' });
+            }
+            emails = await fetchPop3Emails({ email, password, pop3Host: finalPop3Host, pop3Port: finalPop3Port, count });
+        } else {
+            throw new Error('Неизвестный протокол получения.');
+        }
+
+        logger.info(`Получено ${emails.length} писем для ${email} с помощью ${fetchProtocol.toUpperCase()}.`);
+        await logActivity('emails_fetched', { email, protocol: fetchProtocol, count: emails.length });
         res.json({ success: true, emails: emails, count: emails.length });
     } catch (error) {
-        logger.error(`Ошибка при получении писем для ${email}: ${error.message}`);
-        await logActivity('emails_fetch_failed', { email, folder, error: error.message });
+        logger.error(`Ошибка при получении писем (${fetchProtocol.toUpperCase()}) для ${email}: ${error.message}`);
+        await logActivity('emails_fetch_failed', { email, protocol: fetchProtocol, error: error.message });
         res.json({ success: false, error: error.message });
     }
 });
@@ -215,9 +242,15 @@ app.post('/api/get-folders', [
         return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { email, password, imapHost, imapPort } = req.body;
+    const { email, password, imapHost, imapPort, fetchProtocol } = req.body;
     logger.info(`Пользователь ${email} запрашивает список папок.`);
     
+    // Проверяем, что используется IMAP, так как POP3 не поддерживает папки
+    if (fetchProtocol === 'pop3') {
+        logger.info(`Запрос папок для POP3 аккаунта ${email}. Возвращаем пустой список.`);
+        return res.json({ success: true, folders: [] });
+    }
+
     const providerSettings = getProviderSettings(email);
     const finalImapHost = providerSettings ? providerSettings.imap.host : imapHost;
     const finalImapPort = providerSettings ? providerSettings.imap.port : imapPort;
@@ -247,12 +280,13 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
     console.log(`
 ╭─────────────────────────────────────────╮
-│         📧 Email Client Server         │
+│         📧 Email Client Server          │
 │                                         │
 │  Server running on: http://localhost:${PORT}  │
 │                                         │
-│  Features:                             │
+│  Features:                              │
 │  ✓ IMAP email fetching                  │
+│  ✓ POP3 email fetching                  │
 │  ✓ SMTP email sending                   │
 │  ✓ Multiple account management          │
 │  ✓ Connection testing                   │
@@ -262,7 +296,7 @@ app.listen(PORT, () => {
 │  • Outlook/Hotmail                      │
 │  • Yandex                               │
 │  • Yahoo                                │
-│  • Custom IMAP/SMTP servers             │
+│  • Custom IMAP/POP3/SMTP servers        │
 ╰─────────────────────────────────────────╯
     `);
     logger.info(`Сервер запущен на порту ${PORT}.`);

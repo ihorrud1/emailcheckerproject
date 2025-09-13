@@ -1,0 +1,37 @@
+2025-09-13 03:43:01 [INFO   ] Сервер запущен на порту 3000. 
+2025-09-13 03:43:13 [ERROR  ] Необработанная ошибка сервера: Error: ENOENT: no such file or directory, stat 'C:\Users\ihorp\OneDrive\Desktop\emailcheckerproject\index.html' 
+2025-09-13 03:43:15 [ERROR  ] Необработанная ошибка сервера: Error: ENOENT: no such file or directory, stat 'C:\Users\ihorp\OneDrive\Desktop\emailcheckerproject\index.html' 
+2025-09-13 04:09:50 [ERROR  ] uncaughtException: Cannot find module 'poplib'
+Require stack:
+- C:\Users\ihorp\OneDrive\Desktop\emailcheckerproject\emailUtils.js
+- C:\Users\ihorp\OneDrive\Desktop\emailcheckerproject\server.js
+Error: Cannot find module 'poplib'
+Require stack:
+- C:\Users\ihorp\OneDrive\Desktop\emailcheckerproject\emailUtils.js
+- C:\Users\ihorp\OneDrive\Desktop\emailcheckerproject\server.js
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+    at Function._load (node:internal/modules/cjs/loader:1192:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+    at Module.require (node:internal/modules/cjs/loader:1463:12)
+    at require (node:internal/modules/helpers:147:16)
+    at Object.<anonymous> (C:\Users\ihorp\OneDrive\Desktop\emailcheckerproject\emailUtils.js:4:14)
+    at Module._compile (node:internal/modules/cjs/loader:1706:14) 
+Error: Cannot find module 'poplib'
+Require stack:
+- C:\Users\ihorp\OneDrive\Desktop\emailcheckerproject\emailUtils.js
+- C:\Users\ihorp\OneDrive\Desktop\emailcheckerproject\server.js
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+    at Function._load (node:internal/modules/cjs/loader:1192:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+    at Module.require (node:internal/modules/cjs/loader:1463:12)
+    at require (node:internal/modules/helpers:147:16)
+    at Object.<anonymous> (C:\Users\ihorp\OneDrive\Desktop\emailcheckerproject\emailUtils.js:4:14)
+    at Module._compile (node:internal/modules/cjs/loader:1706:14)
+{"date":"Sat Sep 13 2025 04:09:50 GMT-0500 (Central Daylight Time)","error":{"code":"MODULE_NOT_FOUND","requireStack":["C:\\Users\\ihorp\\OneDrive\\Desktop\\emailcheckerproject\\emailUtils.js","C:\\Users\\ihorp\\OneDrive\\Desktop\\emailcheckerproject\\server.js"]},"exception":true,"level":"error","message":"uncaughtException: Cannot find module 'poplib'\nRequire stack:\n- C:\\Users\\ihorp\\OneDrive\\Desktop\\emailcheckerproject\\emailUtils.js\n- C:\\Users\\ihorp\\OneDrive\\Desktop\\emailcheckerproject\\server.js\nError: Cannot find module 'poplib'\nRequire stack:\n- C:\\Users\\ihorp\\OneDrive\\Desktop\\emailcheckerproject\\emailUtils.js\n- C:\\Users\\ihorp\\OneDrive\\Desktop\\emailcheckerproject\\server.js\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\n    at TracingChannel.traceSync (node:diagnostics_channel:322:14)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)\n    at Module.require (node:internal/modules/cjs/loader:1463:12)\n    at require (node:internal/modules/helpers:147:16)\n    at Object.<anonymous> (C:\\Users\\ihorp\\OneDrive\\Desktop\\emailcheckerproject\\emailUtils.js:4:14)\n    at Module._compile (node:internal/modules/cjs/loader:1706:14)","os":{"loadavg":[0,0,0],"uptime":52290.25},"process":{"argv":["C:\\Program Files\\nodejs\\node.exe","C:\\Users\\ihorp\\OneDrive\\Desktop\\emailcheckerproject\\server.js"],"cwd":"C:\\Users\\ihorp\\OneDrive\\Desktop\\emailcheckerproject","execPath":"C:\\Program Files\\nodejs\\node.exe","gid":null,"memoryUsage":{"arrayBuffers":49119,"external":2357634,"heapTotal":34836480,"heapUsed":24257344,"rss":63692800},"pid":11612,"uid":null,"version":"v22.19.0"},"stack":"Error: Cannot find module 'poplib'\nRequire stack:\n- C:\\Users\\ihorp\\OneDrive\\Desktop\\emailcheckerproject\\emailUtils.js\n- C:\\Users\\ihorp\\OneDrive\\Desktop\\emailcheckerproject\\server.js\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\n    at TracingChannel.traceSync (node:diagnostics_channel:322:14)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)\n    at Module.require (node:internal/modules/cjs/loader:1463:12)\n    at require (node:internal/modules/helpers:147:16)\n    at Object.<anonymous> (C:\\Users\\ihorp\\OneDrive\\Desktop\\emailcheckerproject\\emailUtils.js:4:14)\n    at Module._compile (node:internal/modules/cjs/loader:1706:14)","trace":[{"column":15,"file":"node:internal/modules/cjs/loader","function":"Function._resolveFilename","line":1383,"method":"_resolveFilename","native":false},{"column":19,"file":"node:internal/modules/cjs/loader","function":"defaultResolveImpl","line":1025,"method":null,"native":false},{"column":22,"file":"node:internal/modules/cjs/loader","function":"resolveForCJSWithHooks","line":1030,"method":null,"native":false},{"column":37,"file":"node:internal/modules/cjs/loader","function":"Function._load","line":1192,"method":"_load","native":false},{"column":14,"file":"node:diagnostics_channel","function":"TracingChannel.traceSync","line":322,"method":"traceSync","native":false},{"column":24,"file":"node:internal/modules/cjs/loader","function":"wrapModuleLoad","line":237,"method":null,"native":false},{"column":12,"file":"node:internal/modules/cjs/loader","function":"Module.require","line":1463,"method":"require","native":false},{"column":16,"file":"node:internal/modules/helpers","function":"require","line":147,"method":null,"native":false},{"column":14,"file":"C:\\Users\\ihorp\\OneDrive\\Desktop\\emailcheckerproject\\emailUtils.js","function":null,"line":4,"method":null,"native":false},{"column":14,"file":"node:internal/modules/cjs/loader","function":"Module._compile","line":1706,"method":"_compile","native":false}]}
+2025-09-13 04:11:29 [INFO   ] Сервер запущен на порту 3000. 

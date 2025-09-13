@@ -1,9 +1,15 @@
 const Imap = require('imap');
 const nodemailer = require('nodemailer');
 const { simpleParser } = require('mailparser');
+const POP3 = require('poplib');
 const logger = require('./logger');
 const config = require('./config');
 
+// Убедитесь, что у вас установлен poplib: npm install poplib
+
+/**
+ * Тестирует IMAP-соединение.
+ */
 function testImapConnection({ email, password, imapHost, imapPort }) {
     return new Promise((resolve, reject) => {
         const imap = new Imap({
@@ -30,6 +36,9 @@ function testImapConnection({ email, password, imapHost, imapPort }) {
     });
 }
 
+/**
+ * Тестирует SMTP-соединение.
+ */
 function testSmtpConnection({ email, password, smtpHost, smtpPort }) {
     return new Promise((resolve, reject) => {
         const transporter = nodemailer.createTransport({
@@ -53,7 +62,38 @@ function testSmtpConnection({ email, password, smtpHost, smtpPort }) {
     });
 }
 
-function fetchEmails({ email, password, imapHost, imapPort, folder, count }) {
+/**
+ * Тестирует POP3-соединение.
+ */
+function testPop3Connection({ email, password, pop3Host, pop3Port }) {
+    return new Promise((resolve, reject) => {
+        const client = new POP3(pop3Host, pop3Port, { tls: true, strictSSL: false });
+        
+        client.on('error', (err) => {
+            client.quit();
+            reject(new Error(`POP3 connection error: ${err.message}`));
+        });
+
+        client.on('connect', () => {
+            client.login(email, password, (err) => {
+                if (err) {
+                    client.quit();
+                    reject(new Error(`POP3 login failed: ${err.message}`));
+                } else {
+                    client.quit();
+                    resolve(true);
+                }
+            });
+        });
+
+        client.connect();
+    });
+}
+
+/**
+ * Получает письма через IMAP.
+ */
+function fetchImapEmails({ email, password, imapHost, imapPort, folder, count }) {
     return new Promise((resolve, reject) => {
         const imap = new Imap({
             user: email,
@@ -88,38 +128,27 @@ function fetchEmails({ email, password, imapHost, imapPort, folder, count }) {
                     struct: true
                 });
                 
-                fetch.on('message', (msg, seqno) => {
-                    let emailData = { seqno, from: 'Неизвестно', to: 'Неизвестно', subject: 'Без темы', date: 'Неизвестно' };
-                    let bodyStream = null;
+                fetch.on('message', (msg) => {
+                    const emailData = {};
                     
                     msg.on('body', (stream) => {
-                        bodyStream = stream;
+                        simpleParser(stream, (err, parsed) => {
+                            if (err) {
+                                logger.error(`Ошибка разбора письма: ${err.message}`);
+                                return;
+                            }
+                            emailData.from = parsed.from ? parsed.from.text : 'Неизвестно';
+                            emailData.to = parsed.to ? parsed.to.text : 'Неизвестно';
+                            emailData.subject = parsed.subject || 'Без темы';
+                            emailData.date = parsed.date ? new Date(parsed.date).toLocaleString('ru-RU') : 'Неизвестно';
+                            emailData.body = parsed.html || parsed.text;
+                        });
                     });
                     
                     msg.once('attributes', (attrs) => {
                         emailData.unread = !attrs.flags.includes('\\Seen');
                         emailData.uid = attrs.uid;
-                        emailData.flags = attrs.flags;
-                    });
-                    
-                    msg.once('end', () => {
-                        if (bodyStream) {
-                            simpleParser(bodyStream, (err, parsed) => {
-                                if (err) {
-                                    logger.error(`Ошибка разбора письма: ${err.message}`);
-                                    return;
-                                }
-                                emailData.from = parsed.from ? parsed.from.text : emailData.from;
-                                emailData.to = parsed.to ? parsed.to.text : emailData.to;
-                                emailData.subject = parsed.subject || emailData.subject;
-                                emailData.date = parsed.date ? new Date(parsed.date).toLocaleString('ru-RU') : emailData.date;
-                                emailData.body = parsed.html || parsed.text;
-                                emailData.attachments = parsed.attachments;
-                                emails.push(emailData);
-                            });
-                        } else {
-                            emails.push(emailData);
-                        }
+                        emails.push(emailData);
                     });
                 });
                 
@@ -129,7 +158,7 @@ function fetchEmails({ email, password, imapHost, imapPort, folder, count }) {
                 
                 fetch.once('end', () => {
                     imap.end();
-                    emails.sort((a, b) => b.seqno - a.seqno);
+                    emails.sort((a, b) => new Date(b.date) - new Date(a.date));
                     resolve(emails);
                 });
             });
@@ -143,6 +172,77 @@ function fetchEmails({ email, password, imapHost, imapPort, folder, count }) {
     });
 }
 
+/**
+ * Получает письма через POP3.
+ */
+function fetchPop3Emails({ email, password, pop3Host, pop3Port, count }) {
+    return new Promise((resolve, reject) => {
+        const client = new POP3(pop3Host, pop3Port, { tls: true, strictSSL: false });
+        const emails = [];
+        
+        client.on('error', (err) => {
+            client.quit();
+            reject(new Error(`POP3 connection error: ${err.message}`));
+        });
+
+        client.on('connect', () => {
+            client.login(email, password, (err) => {
+                if (err) {
+                    client.quit();
+                    reject(new Error(`POP3 login failed: ${err.message}`));
+                } else {
+                    client.stat((err, msgCount) => {
+                        if (err) {
+                            client.quit();
+                            return reject(new Error(`POP3 stat failed: ${err.message}`));
+                        }
+                        
+                        const fetchCount = Math.min(msgCount, count);
+                        if (fetchCount === 0) {
+                            client.quit();
+                            return resolve([]);
+                        }
+
+                        let fetched = 0;
+                        for (let i = 1; i <= fetchCount; i++) {
+                            client.retr(i, (err, data) => {
+                                if (err) {
+                                    logger.error(`Ошибка POP3 RETR: ${err.message}`);
+                                    fetched++;
+                                } else {
+                                    simpleParser(data, (err, parsed) => {
+                                        if (err) {
+                                            logger.error(`Ошибка разбора письма: ${err.message}`);
+                                            return;
+                                        }
+                                        emails.push({
+                                            id: i,
+                                            from: parsed.from ? parsed.from.text : 'Неизвестно',
+                                            subject: parsed.subject || 'Без темы',
+                                            date: parsed.date ? new Date(parsed.date).toLocaleString('ru-RU') : 'Неизвестно',
+                                            body: parsed.html || parsed.text,
+                                        });
+                                        fetched++;
+                                        if (fetched === fetchCount) {
+                                            client.quit();
+                                            resolve(emails);
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+        });
+        
+        client.connect();
+    });
+}
+
+/**
+ * Отправляет письмо через SMTP.
+ */
 function sendEmail({ from, password, smtpHost, smtpPort, to, subject, text }) {
     return new Promise((resolve, reject) => {
         const transporter = nodemailer.createTransport({
@@ -174,7 +274,12 @@ function sendEmail({ from, password, smtpHost, smtpPort, to, subject, text }) {
     });
 }
 
+/**
+ * Помечает письма как прочитанные (только для IMAP).
+ */
 function markAsRead({ email, password, imapHost, imapPort, messageIds }) {
+    // В POP3 нет концепции "прочитано", так как письма обычно удаляются с сервера после загрузки.
+    // Поэтому эта функция работает только для IMAP.
     return new Promise((resolve, reject) => {
         const imap = new Imap({
             user: email,
@@ -186,12 +291,13 @@ function markAsRead({ email, password, imapHost, imapPort, messageIds }) {
         });
         
         imap.once('ready', () => {
-            imap.openBox('INBOX', false, (err, box) => {
+            imap.openBox('INBOX', false, (err) => {
                 if (err) {
                     reject(err);
                     return;
                 }
                 
+                // Используем uid, а не seqno, для более надежной работы
                 imap.addFlags(messageIds, '\\Seen', (err) => {
                     imap.end();
                     if (err) {
@@ -211,7 +317,11 @@ function markAsRead({ email, password, imapHost, imapPort, messageIds }) {
     });
 }
 
+/**
+ * Получает список папок (только для IMAP).
+ */
 function getFolders({ email, password, imapHost, imapPort }) {
+    // POP3 не поддерживает папки.
     return new Promise((resolve, reject) => {
         const imap = new Imap({
             user: email,
@@ -259,12 +369,4 @@ function extractFolderNames(boxes, prefix = '') {
     return folders;
 }
 
-module.exports = {
-    testImapConnection,
-    testSmtpConnection,
-    fetchEmails,
-    sendEmail,
-    markAsRead,
-    getFolders,
-    extractFolderNames
-};
+// Экспортируем все функции, которые будут использоваться в

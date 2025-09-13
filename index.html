@@ -1,4 +1,4 @@
-        //<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -188,7 +188,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>📧 IMAP/SMTP Email Client</h1>
+            <h1>📧 Email Client</h1>
             <p>Управление множественными email аккаунтами</p>
         </div>
         
@@ -199,9 +199,8 @@
             <div class="tab" onclick="switchTab('accounts')">Аккаунты</div>
         </div>
         
-        <!-- Подключение -->
         <div id="connect" class="tab-content active">
-            <h3>Настройка IMAP/SMTP</h3>
+            <h3>Настройка IMAP/POP3/SMTP</h3>
             
             <div class="form-group">
                 <label>Провайдер:</label>
@@ -213,17 +212,37 @@
                     <option value="yahoo">Yahoo</option>
                 </select>
             </div>
+
+            <div class="form-group">
+                <label>Протокол получения:</label>
+                <select id="fetchProtocol" onchange="toggleFetchProtocol()">
+                    <option value="imap">IMAP</option>
+                    <option value="pop3">POP3</option>
+                </select>
+            </div>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                 <div>
-                    <h4>IMAP (Получение почты)</h4>
-                    <div class="form-group">
-                        <label>IMAP Сервер:</label>
-                        <input type="text" id="imapHost" placeholder="imap.gmail.com">
+                    <h4>Настройки получения</h4>
+                    <div id="imapSettings">
+                        <div class="form-group">
+                            <label>IMAP Сервер:</label>
+                            <input type="text" id="imapHost" placeholder="imap.gmail.com">
+                        </div>
+                        <div class="form-group">
+                            <label>IMAP Порт:</label>
+                            <input type="number" id="imapPort" value="993">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>IMAP Порт:</label>
-                        <input type="number" id="imapPort" value="993">
+                    <div id="pop3Settings" style="display: none;">
+                        <div class="form-group">
+                            <label>POP3 Сервер:</label>
+                            <input type="text" id="pop3Host" placeholder="pop.gmail.com">
+                        </div>
+                        <div class="form-group">
+                            <label>POP3 Порт:</label>
+                            <input type="number" id="pop3Port" value="995">
+                        </div>
                     </div>
                 </div>
                 
@@ -254,7 +273,6 @@
             <button onclick="saveAccount()" class="btn-success">💾 Сохранить аккаунт</button>
         </div>
         
-        <!-- Входящие -->
         <div id="inbox" class="tab-content">
             <h3>Входящие сообщения</h3>
             
@@ -262,6 +280,14 @@
                 <label>Выберите аккаунт:</label>
                 <select id="selectedAccount">
                     <option value="">Выберите аккаунт</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Протокол:</label>
+                <select id="fetchProtocolInbox">
+                    <option value="imap">IMAP</option>
+                    <option value="pop3">POP3</option>
                 </select>
             </div>
             
@@ -282,9 +308,9 @@
             
             <button onclick="fetchEmails()">📨 Получить письма</button>
             <button onclick="markAsRead()" class="btn-secondary">✓ Отметить как прочитанные</button>
+            <button onclick="getFolders()" class="btn-secondary">📂 Обновить папки</button>
         </div>
         
-        <!-- Отправить -->
         <div id="send" class="tab-content">
             <h3>Отправить письмо</h3>
             
@@ -314,21 +340,18 @@
             <button onclick="saveDraft()" class="btn-secondary">💾 Сохранить черновик</button>
         </div>
         
-        <!-- Аккаунты -->
         <div id="accounts" class="tab-content">
             <h3>Управление аккаунтами</h3>
             
             <div class="accounts" id="accountsList">
-                <!-- Аккаунты будут добавлены через JavaScript -->
-            </div>
+                </div>
             
             <button onclick="checkAllAccounts()" class="btn-success">🔍 Проверить все аккаунты</button>
             <button onclick="clearAllAccounts()" class="btn-danger">🗑 Очистить все</button>
         </div>
         
         <div class="result" id="result" style="display: none;">
-            <!-- Результат операций -->
-        </div>
+            </div>
     </div>
 
     <script>
@@ -345,55 +368,99 @@
             if (tabName === 'accounts') {
                 displayAccounts();
             }
+            if (tabName === 'inbox') {
+                updateInboxForm();
+            }
             updateAccountSelects();
         }
         
-        // Настройки провайдеров
+        // Динамическое обновление формы входящих
+        function updateInboxForm() {
+            const fetchProtocol = document.getElementById('fetchProtocolInbox').value;
+            const folderSelect = document.getElementById('folderSelect');
+            const markReadButton = document.querySelector('#inbox button.btn-secondary:nth-of-type(1)');
+            const getFoldersButton = document.querySelector('#inbox button.btn-secondary:nth-of-type(2)');
+
+            if (fetchProtocol === 'pop3') {
+                folderSelect.disabled = true; // POP3 не поддерживает папки
+                markReadButton.disabled = true; // POP3 не поддерживает отметку прочитанных
+                getFoldersButton.disabled = true; // POP3 не поддерживает получение списка папок
+            } else {
+                folderSelect.disabled = false;
+                markReadButton.disabled = false;
+                getFoldersButton.disabled = false;
+            }
+        }
+
+        // Обновление настроек провайдеров
         function setProviderSettings() {
             const provider = document.getElementById('provider').value;
+            const fetchProtocol = document.getElementById('fetchProtocol').value;
             const settings = {
                 gmail: {
-                    imapHost: 'imap.gmail.com',
-                    imapPort: 993,
-                    smtpHost: 'smtp.gmail.com',
-                    smtpPort: 587
+                    imap: { host: 'imap.gmail.com', port: 993 },
+                    pop3: { host: 'pop.gmail.com', port: 995 },
+                    smtp: { host: 'smtp.gmail.com', port: 587 }
                 },
                 outlook: {
-                    imapHost: 'outlook.office365.com',
-                    imapPort: 993,
-                    smtpHost: 'smtp-mail.outlook.com',
-                    smtpPort: 587
+                    imap: { host: 'outlook.office365.com', port: 993 },
+                    pop3: { host: 'outlook.office365.com', port: 995 },
+                    smtp: { host: 'smtp-mail.outlook.com', port: 587 }
                 },
                 yandex: {
-                    imapHost: 'imap.yandex.ru',
-                    imapPort: 993,
-                    smtpHost: 'smtp.yandex.ru',
-                    smtpPort: 587
+                    imap: { host: 'imap.yandex.ru', port: 993 },
+                    pop3: { host: 'pop.yandex.ru', port: 995 },
+                    smtp: { host: 'smtp.yandex.ru', port: 587 }
                 },
                 yahoo: {
-                    imapHost: 'imap.mail.yahoo.com',
-                    imapPort: 993,
-                    smtpHost: 'smtp.mail.yahoo.com',
-                    smtpPort: 587
+                    imap: { host: 'imap.mail.yahoo.com', port: 993 },
+                    pop3: { host: 'pop.mail.yahoo.com', port: 995 },
+                    smtp: { host: 'smtp.mail.yahoo.com', port: 587 }
                 }
             };
             
             if (settings[provider]) {
-                document.getElementById('imapHost').value = settings[provider].imapHost;
-                document.getElementById('imapPort').value = settings[provider].imapPort;
-                document.getElementById('smtpHost').value = settings[provider].smtpHost;
-                document.getElementById('smtpPort').value = settings[provider].smtpPort;
+                document.getElementById('imapHost').value = settings[provider].imap.host;
+                document.getElementById('imapPort').value = settings[provider].imap.port;
+                document.getElementById('pop3Host').value = settings[provider].pop3.host;
+                document.getElementById('pop3Port').value = settings[provider].pop3.port;
+                document.getElementById('smtpHost').value = settings[provider].smtp.host;
+                document.getElementById('smtpPort').value = settings[provider].smtp.port;
+            } else {
+                 document.getElementById('imapHost').value = '';
+                 document.getElementById('imapPort').value = '993';
+                 document.getElementById('pop3Host').value = '';
+                 document.getElementById('pop3Port').value = '995';
+                 document.getElementById('smtpHost').value = '';
+                 document.getElementById('smtpPort').value = '587';
+            }
+            toggleFetchProtocol(); // Обновление видимости полей
+        }
+
+        // Переключение полей IMAP/POP3
+        function toggleFetchProtocol() {
+            const protocol = document.getElementById('fetchProtocol').value;
+            if (protocol === 'imap') {
+                document.getElementById('imapSettings').style.display = 'block';
+                document.getElementById('pop3Settings').style.display = 'none';
+            } else {
+                document.getElementById('imapSettings').style.display = 'none';
+                document.getElementById('pop3Settings').style.display = 'block';
             }
         }
         
         // Сохранить аккаунт
         function saveAccount() {
+            const fetchProtocol = document.getElementById('fetchProtocol').value;
             const account = {
                 id: Date.now(),
                 email: document.getElementById('email').value,
                 password: document.getElementById('password').value,
+                fetchProtocol: fetchProtocol,
                 imapHost: document.getElementById('imapHost').value,
                 imapPort: parseInt(document.getElementById('imapPort').value),
+                pop3Host: document.getElementById('pop3Host').value,
+                pop3Port: parseInt(document.getElementById('pop3Port').value),
                 smtpHost: document.getElementById('smtpHost').value,
                 smtpPort: parseInt(document.getElementById('smtpPort').value),
                 provider: document.getElementById('provider').value,
@@ -425,11 +492,15 @@
         
         // Тестирование подключения
         async function testConnection() {
+            const fetchProtocol = document.getElementById('fetchProtocol').value;
             const data = {
                 email: document.getElementById('email').value,
                 password: document.getElementById('password').value,
+                fetchProtocol: fetchProtocol,
                 imapHost: document.getElementById('imapHost').value,
                 imapPort: parseInt(document.getElementById('imapPort').value),
+                pop3Host: document.getElementById('pop3Host').value,
+                pop3Port: parseInt(document.getElementById('pop3Port').value),
                 smtpHost: document.getElementById('smtpHost').value,
                 smtpPort: parseInt(document.getElementById('smtpPort').value)
             };
@@ -445,7 +516,7 @@
                 
                 const result = await response.json();
                 if (result.success) {
-                    showResult(`✅ Подключение успешно!\nIMAP: ${result.imap ? '✓' : '✗'}\nSMTP: ${result.smtp ? '✓' : '✗'}`, 'success');
+                    showResult(`✅ Подключение успешно!\nПолучение (${fetchProtocol.toUpperCase()}): ${result[fetchProtocol] ? '✓' : '✗'}\nSMTP: ${result.smtp ? '✓' : '✗'}`, 'success');
                 } else {
                     showResult(`❌ Ошибка подключения:\n${result.error}`, 'error');
                 }
@@ -466,6 +537,7 @@
             
             const data = {
                 ...account,
+                fetchProtocol: document.getElementById('fetchProtocolInbox').value,
                 folder: document.getElementById('folderSelect').value,
                 count: parseInt(document.getElementById('messageCount').value)
             };
@@ -524,7 +596,6 @@
                 const result = await response.json();
                 if (result.success) {
                     showResult(`✅ Письмо отправлено!\nОт: ${data.email}\nКому: ${data.to}\nТема: ${data.subject}`, 'success');
-                    // Очистить форму
                     document.getElementById('toEmail').value = '';
                     document.getElementById('subject').value = '';
                     document.getElementById('message').value = '';
@@ -543,7 +614,6 @@
             result.textContent = text;
             result.className = 'result ' + type;
             
-            // Прокрутка к результату
             result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
         
@@ -565,7 +635,7 @@
                 accounts.forEach(account => {
                     const option = document.createElement('option');
                     option.value = account.email;
-                    option.textContent = `${account.email} (${account.provider})`;
+                    option.textContent = `${account.email} (${account.provider}) - ${account.fetchProtocol.toUpperCase()}`;
                     select.appendChild(option);
                 });
                 
@@ -589,7 +659,8 @@
                 card.innerHTML = `
                     <div class="account-name">${account.email}</div>
                     <div class="account-email">Провайдер: ${account.provider}</div>
-                    <div class="account-email">IMAP: ${account.imapHost}:${account.imapPort}</div>
+                    <div class="account-email">Протокол: ${account.fetchProtocol.toUpperCase()}</div>
+                    <div class="account-email">${account.fetchProtocol.toUpperCase()}: ${account[account.fetchProtocol + 'Host']}:${account[account.fetchProtocol + 'Port']}</div>
                     <div class="account-email">SMTP: ${account.smtpHost}:${account.smtpPort}</div>
                     <span class="status ${account.status}">${account.status === 'online' ? 'Подключен' : 'Не подключен'}</span>
                     <div style="margin-top: 10px;">
@@ -649,7 +720,7 @@
             
             for (const account of accounts) {
                 await testAccountConnection(account.email);
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Задержка между проверками
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
             
             const online = accounts.filter(a => a.status === 'online').length;
@@ -683,10 +754,101 @@
             
             showResult('✅ Черновик сохранен!', 'success');
         }
+
+        // Получение списка папок
+        async function getFolders() {
+            const accountEmail = document.getElementById('selectedAccount').value;
+            const account = accounts.find(a => a.email === accountEmail);
+            
+            if (!account) {
+                showResult('❌ Выберите аккаунт!', 'error');
+                return;
+            }
+
+            const fetchProtocol = document.getElementById('fetchProtocolInbox').value;
+
+            if (fetchProtocol !== 'imap') {
+                showResult('❌ Получение списка папок поддерживается только для IMAP.', 'error');
+                return;
+            }
+            
+            showResult('📂 Получение списка папок...', 'info');
+            
+            try {
+                const response = await fetch('/api/get-folders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: account.email, password: account.password, fetchProtocol })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    const folderSelect = document.getElementById('folderSelect');
+                    folderSelect.innerHTML = '';
+                    result.folders.forEach(folder => {
+                        const option = document.createElement('option');
+                        option.value = folder;
+                        option.textContent = folder;
+                        folderSelect.appendChild(option);
+                    });
+                    showResult(`✅ Получено ${result.folders.length} папок.`, 'success');
+                } else {
+                    showResult(`❌ Ошибка: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Ошибка: ${error.message}`, 'error');
+            }
+        }
         
         // Отметить как прочитанные
         async function markAsRead() {
-            showResult('Функция "Отметить как прочитанные" будет реализована в server.js', 'info');
+            const accountEmail = document.getElementById('selectedAccount').value;
+            const account = accounts.find(a => a.email === accountEmail);
+            
+            if (!account) {
+                showResult('❌ Выберите аккаунт!', 'error');
+                return;
+            }
+            
+            const fetchProtocol = document.getElementById('fetchProtocolInbox').value;
+
+            if (fetchProtocol !== 'imap') {
+                showResult('❌ Отметить как прочитанные поддерживается только для IMAP.', 'error');
+                return;
+            }
+            
+            // Здесь нужна логика для выбора писем, которые нужно отметить как прочитанные.
+            // Например, можно получить id писем из результата fetchEmails и передать их.
+            // Сейчас это просто заглушка.
+            const messageIds = [/* id писем, которые нужно отметить */];
+            
+            if (messageIds.length === 0) {
+                showResult('ℹ️ Не выбрано ни одного письма для отметки.', 'info');
+                return;
+            }
+            
+            showResult(`✓ Отмечаем ${messageIds.length} писем как прочитанные...`, 'info');
+            
+            try {
+                const response = await fetch('/api/mark-read', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: account.email,
+                        password: account.password,
+                        messageIds: messageIds,
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showResult(`✅ Письма успешно отмечены как прочитанные.`, 'success');
+                } else {
+                    showResult(`❌ Ошибка: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Ошибка: ${error.message}`, 'error');
+            }
         }
         
         // Вызов API для конкретного аккаунта
@@ -719,14 +881,10 @@
             }
         }
         
-        // Инициализация (обновлено)
+        // Инициализация
         document.addEventListener('DOMContentLoaded', function() {
             updateAccountSelects();
-            setProviderSettings(); // Установить настройки Gmail по умолчанию
-            
-            // Добавить обработчик для протокола получения
-            document.getElementById('fetchProtocol').addEventListener('change', toggleFetchProtocol);
-            toggleFetchProtocol(); // Инициальная настройка
+            setProviderSettings(); 
         });
     </script>
 </body>
