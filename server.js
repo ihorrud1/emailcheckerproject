@@ -1,475 +1,257 @@
 const express = require('express');
-const Imap = require('imap');
-const nodemailer = require('nodemailer');
-const { simpleParser } = require('mailparser');
+const { body, validationResult } = require('express-validator');
 const path = require('path');
-const fs = require('fs');
+const logger = require('./logger');
+const { getProviderSettings } = require('./emailProviders');
+const { testImapConnection, testSmtpConnection, fetchEmails, sendEmail, markAsRead, getFolders } = require('./emailUtils');
+const { callCustomApi, logActivity } = require('./apiClient');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-// Serve HTML file
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Custom API call endpoint
-app.post('/api/custom-api-call', async (req, res) => {
-    const { email, action, accountData, timestamp } = req.body;
-    
+app.post('/api/custom-api-call', [
+    body('email').isEmail().withMessage('Некорректный email'),
+    body('action').notEmpty().withMessage('Отсутствует действие'),
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        logger.warn(`Ошибка валидации при вызове API: ${JSON.stringify(errors.array())}`);
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const { email, action, accountData } = req.body;
+    logger.info(`Пользователь ${email} вызывает API с действием: ${action}`);
+
     try {
-        // Call your custom API
-        const apiResult = await callYourAPI('/custom/endpoint', {
-            email,
-            action,
-            data: accountData,
-            timestamp,
-            source: 'email_client'
-        });
-        
-        // Log the API call
-        await logActivity('custom_api_call', email, { 
-            action, 
-            success: apiResult.success,
-            timestamp 
-        });
-        
-        res.json({
-            success: apiResult.success,
-            data: apiResult.data,
-            error: apiResult.error,
-            apiCalled: true
-        });
+        const apiResult = await callCustomApi({ email, action, data: accountData });
+        await logActivity('custom_api_call', { email, action, success: true });
+        res.json({ success: true, data: apiResult, message: 'Вызов API успешно обработан' });
     } catch (error) {
-        res.json({
-            success: false,
-            error: error.message,
-            apiCalled: false
-        });
+        logger.error(`Ошибка при вызове внешнего API для ${email}: ${error.message}`);
+        await logActivity('custom_api_call', { email, action, success: false, error: error.message });
+        res.status(500).json({ success: false, error: 'Ошибка при вызове внешнего API.' });
     }
 });
 
-// Test IMAP/SMTP connection
-app.post('/api/test-connection', async (req, res) => {
+app.post('/api/test-connection', [
+    body('email').isEmail().withMessage('Некорректиный email'),
+    body('password').notEmpty().withMessage('Пароль не может быть пустым'),
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        logger.warn(`Ошибка валидации при тестировании подключения: ${JSON.stringify(errors.array())}`);
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
     const { email, password, imapHost, imapPort, smtpHost, smtpPort } = req.body;
-    
+    let errs = [];
+
+    const providerSettings = getProviderSettings(email);
+    const finalImapHost = providerSettings ? providerSettings.imap.host : imapHost;
+    const finalImapPort = providerSettings ? providerSettings.imap.port : imapPort;
+    const finalSmtpHost = providerSettings ? providerSettings.smtp.host : smtpHost;
+    const finalSmtpPort = providerSettings ? providerSettings.smtp.port : smtpPort;
+
+    if (!finalImapHost || !finalSmtpHost) {
+        logger.error(`Не удалось определить настройки для ${email}.`);
+        return res.json({ success: false, error: 'Не удалось определить настройки сервера. Пожалуйста, укажите хост и порт вручную.' });
+    }
+
     let imapResult = false;
     let smtpResult = false;
-    let errors = [];
-    
-    // Test IMAP connection
+
     try {
-        await testImapConnection({ email, password, imapHost, imapPort });
+        await testImapConnection({ email, password, imapHost: finalImapHost, imapPort: finalImapPort });
         imapResult = true;
     } catch (error) {
-        errors.push(`IMAP: ${error.message}`);
+        errs.push(`IMAP: ${error.message}`);
+        logger.error(`Ошибка IMAP для ${email}: ${error.message}`);
     }
-    
-    // Test SMTP connection
+
     try {
-        await testSmtpConnection({ email, password, smtpHost, smtpPort });
+        await testSmtpConnection({ email, password, smtpHost: finalSmtpHost, smtpPort: finalSmtpPort });
         smtpResult = true;
     } catch (error) {
-        errors.push(`SMTP: ${error.message}`);
+        errs.push(`SMTP: ${error.message}`);
+        logger.error(`Ошибка SMTP для ${email}: ${error.message}`);
     }
-    
+
+    if (imapResult && smtpResult) {
+        logger.info(`Подключение для ${email} успешно протестировано.`);
+        await logActivity('connection_test_success', { email, imap: true, smtp: true });
+    } else {
+        await logActivity('connection_test_failed', { email, imap: imapResult, smtp: smtpResult, errors: errs.join(', ') });
+    }
+
     res.json({
         success: imapResult && smtpResult,
         imap: imapResult,
         smtp: smtpResult,
-        error: errors.length > 0 ? errors.join(', ') : null
+        error: errs.length > 0 ? errs.join(', ') : null
     });
 });
 
-// Fetch emails via IMAP
-app.post('/api/fetch-emails', async (req, res) => {
+app.post('/api/fetch-emails', [
+    body('email').isEmail().withMessage('Некорректный email'),
+    body('password').notEmpty().withMessage('Пароль не может быть пустым'),
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        logger.warn(`Ошибка валидации при получении писем: ${JSON.stringify(errors.array())}`);
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
     const { email, password, imapHost, imapPort, folder = 'INBOX', count = 10 } = req.body;
+    logger.info(`Пользователь ${email} пытается получить письма из папки "${folder}".`);
     
+    const providerSettings = getProviderSettings(email);
+    const finalImapHost = providerSettings ? providerSettings.imap.host : imapHost;
+    const finalImapPort = providerSettings ? providerSettings.imap.port : imapPort;
+
+    if (!finalImapHost) {
+        logger.error(`Не удалось определить настройки IMAP для ${email}.`);
+        return res.json({ success: false, error: 'Не удалось определить настройки IMAP сервера.' });
+    }
+
     try {
-        const emails = await fetchEmails({
-            email,
-            password,
-            imapHost,
-            imapPort,
-            folder,
-            count
-        });
-        
-        res.json({
-            success: true,
-            emails: emails,
-            count: emails.length
-        });
+        const emails = await fetchEmails({ email, password, imapHost: finalImapHost, imapPort: finalImapPort, folder, count });
+        logger.info(`Получено ${emails.length} писем для ${email}.`);
+        await logActivity('emails_fetched', { email, folder, count: emails.length });
+        res.json({ success: true, emails: emails, count: emails.length });
     } catch (error) {
-        res.json({
-            success: false,
-            error: error.message
-        });
+        logger.error(`Ошибка при получении писем для ${email}: ${error.message}`);
+        await logActivity('emails_fetch_failed', { email, folder, error: error.message });
+        res.json({ success: false, error: error.message });
     }
 });
 
-// Send email via SMTP
-app.post('/api/send-email', async (req, res) => {
+app.post('/api/send-email', [
+    body('email').isEmail().withMessage('Некорректный email отправителя'),
+    body('password').notEmpty().withMessage('Пароль не может быть пустым'),
+    body('to').isEmail().withMessage('Некорректный email получателя'),
+    body('subject').notEmpty().withMessage('Тема не может быть пустой'),
+    body('text').notEmpty().withMessage('Тело письма не может быть пустым'),
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        logger.warn(`Ошибка валидации при отправке письма: ${JSON.stringify(errors.array())}`);
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
     const { email, password, smtpHost, smtpPort, to, subject, text } = req.body;
-    
+    logger.info(`Пользователь ${email} пытается отправить письмо на ${to} с темой "${subject}".`);
+
+    const providerSettings = getProviderSettings(email);
+    const finalSmtpHost = providerSettings ? providerSettings.smtp.host : smtpHost;
+    const finalSmtpPort = providerSettings ? providerSettings.smtp.port : smtpPort;
+
+    if (!finalSmtpHost) {
+        logger.error(`Не удалось определить настройки SMTP для ${email}.`);
+        return res.json({ success: false, error: 'Не удалось определить настройки SMTP сервера.' });
+    }
+
     try {
-        await sendEmail({
-            from: email,
-            password,
-            smtpHost,
-            smtpPort,
-            to,
-            subject,
-            text
-        });
-        
-        res.json({
-            success: true,
-            message: 'Email sent successfully'
-        });
+        await sendEmail({ from: email, password, smtpHost: finalSmtpHost, smtpPort: finalSmtpPort, to, subject, text });
+        logger.info(`Письмо от ${email} на ${to} успешно отправлено.`);
+        await logActivity('email_sent_success', { email, to, subject });
+        res.json({ success: true, message: 'Email sent successfully' });
     } catch (error) {
-        res.json({
-            success: false,
-            error: error.message
-        });
+        logger.error(`Ошибка при отправке письма от ${email}: ${error.message}`);
+        await logActivity('email_sent_failed', { email, to, subject, error: error.message });
+        res.json({ success: false, error: error.message });
     }
 });
 
-// Mark emails as read
-app.post('/api/mark-read', async (req, res) => {
+app.post('/api/mark-read', [
+    body('email').isEmail().withMessage('Некорректный email'),
+    body('password').notEmpty().withMessage('Пароль не может быть пустым'),
+    body('messageIds').isArray().withMessage('messageIds должен быть массивом'),
+    body('messageIds.*').isInt().withMessage('messageIds должны быть числами'),
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        logger.warn(`Ошибка валидации при пометке писем как прочитанных: ${JSON.stringify(errors.array())}`);
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
     const { email, password, imapHost, imapPort, messageIds } = req.body;
-    
+    logger.info(`Пользователь ${email} помечает ${messageIds.length} писем как прочитанные.`);
+
+    const providerSettings = getProviderSettings(email);
+    const finalImapHost = providerSettings ? providerSettings.imap.host : imapHost;
+    const finalImapPort = providerSettings ? providerSettings.imap.port : imapPort;
+
+    if (!finalImapHost) {
+        logger.error(`Не удалось определить настройки IMAP для ${email}.`);
+        return res.json({ success: false, error: 'Не удалось определить настройки IMAP сервера.' });
+    }
+
     try {
-        await markAsRead({
-            email,
-            password,
-            imapHost,
-            imapPort,
-            messageIds
-        });
-        
-        res.json({
-            success: true,
-            message: 'Messages marked as read'
-        });
+        await markAsRead({ email, password, imapHost: finalImapHost, imapPort: finalImapPort, messageIds });
+        logger.info(`Письма для ${email} успешно помечены как прочитанные.`);
+        await logActivity('emails_marked_read', { email, count: messageIds.length });
+        res.json({ success: true, message: 'Messages marked as read' });
     } catch (error) {
-        res.json({
-            success: false,
-            error: error.message
-        });
+        logger.error(`Ошибка при пометке писем как прочитанных для ${email}: ${error.message}`);
+        await logActivity('emails_mark_read_failed', { email, count: messageIds.length, error: error.message });
+        res.json({ success: false, error: error.message });
     }
 });
 
-// Get folder list
-app.post('/api/get-folders', async (req, res) => {
+app.post('/api/get-folders', [
+    body('email').isEmail().withMessage('Некорректный email'),
+    body('password').notEmpty().withMessage('Пароль не может быть пустым'),
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        logger.warn(`Ошибка валидации при получении списка папок: ${JSON.stringify(errors.array())}`);
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
     const { email, password, imapHost, imapPort } = req.body;
+    logger.info(`Пользователь ${email} запрашивает список папок.`);
     
+    const providerSettings = getProviderSettings(email);
+    const finalImapHost = providerSettings ? providerSettings.imap.host : imapHost;
+    const finalImapPort = providerSettings ? providerSettings.imap.port : imapPort;
+
+    if (!finalImapHost) {
+        logger.error(`Не удалось определить настройки IMAP для ${email}.`);
+        return res.json({ success: false, error: 'Не удалось определить настройки IMAP сервера.' });
+    }
+
     try {
-        const folders = await getFolders({
-            email,
-            password,
-            imapHost,
-            imapPort
-        });
-        
-        res.json({
-            success: true,
-            folders: folders
-        });
+        const folders = await getFolders({ email, password, imapHost: finalImapHost, imapPort: finalImapPort });
+        logger.info(`Получено ${folders.length} папок для ${email}.`);
+        await logActivity('folders_fetched', { email, count: folders.length });
+        res.json({ success: true, folders: folders });
     } catch (error) {
-        res.json({
-            success: false,
-            error: error.message
-        });
+        logger.error(`Ошибка при получении папок для ${email}: ${error.message}`);
+        await logActivity('folders_fetch_failed', { email, error: error.message });
+        res.json({ success: false, error: error.message });
     }
 });
 
-// IMAP Helper Functions
-function testImapConnection({ email, password, imapHost, imapPort }) {
-    return new Promise((resolve, reject) => {
-        const imap = new Imap({
-            user: email,
-            password: password,
-            host: imapHost,
-            port: imapPort,
-            tls: true,
-            tlsOptions: {
-                rejectUnauthorized: false
-            },
-            connTimeout: 10000,
-            authTimeout: 10000
-        });
-        
-        imap.once('ready', () => {
-            imap.end();
-            resolve(true);
-        });
-        
-        imap.once('error', (err) => {
-            reject(err);
-        });
-        
-        imap.connect();
-    });
-}
-
-function testSmtpConnection({ email, password, smtpHost, smtpPort }) {
-    return new Promise((resolve, reject) => {
-        const transporter = nodemailer.createTransporter({
-            host: smtpHost,
-            port: smtpPort,
-            secure: smtpPort === 465,
-            auth: {
-                user: email,
-                pass: password
-            },
-            tls: {
-                rejectUnauthorized: false
-            }
-        });
-        
-        transporter.verify((error, success) => {
-            if (error) {
-                reject(error);
-            } else {
-                resolve(success);
-            }
-        });
-    });
-}
-
-function fetchEmails({ email, password, imapHost, imapPort, folder, count }) {
-    return new Promise((resolve, reject) => {
-        const imap = new Imap({
-            user: email,
-            password: password,
-            host: imapHost,
-            port: imapPort,
-            tls: true,
-            tlsOptions: {
-                rejectUnauthorized: false
-            }
-        });
-        
-        const emails = [];
-        
-        imap.once('ready', () => {
-            imap.openBox(folder, true, (err, box) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
-                
-                if (box.messages.total === 0) {
-                    resolve([]);
-                    imap.end();
-                    return;
-                }
-                
-                const fetchCount = Math.min(count, box.messages.total);
-                const start = Math.max(1, box.messages.total - fetchCount + 1);
-                const end = box.messages.total;
-                
-                const fetch = imap.seq.fetch(`${start}:${end}`, {
-                    bodies: 'HEADER.FIELDS (FROM TO SUBJECT DATE)',
-                    struct: true
-                });
-                
-                fetch.on('message', (msg, seqno) => {
-                    const email = { seqno };
-                    
-                    msg.on('body', (stream, info) => {
-                        let buffer = '';
-                        stream.on('data', (chunk) => {
-                            buffer += chunk.toString('utf8');
-                        });
-                        stream.once('end', () => {
-                            const header = Imap.parseHeader(buffer);
-                            email.from = header.from ? header.from[0] : 'Неизвестно';
-                            email.to = header.to ? header.to[0] : email;
-                            email.subject = header.subject ? header.subject[0] : 'Без темы';
-                            email.date = header.date ? new Date(header.date[0]).toLocaleString('ru-RU') : 'Неизвестно';
-                            email.protocol = 'IMAP';
-                        });
-                    });
-                    
-                    msg.once('attributes', (attrs) => {
-                        email.unread = !attrs.flags.includes('\\Seen');
-                        email.uid = attrs.uid;
-                        email.flags = attrs.flags;
-                    });
-                    
-                    msg.once('end', () => {
-                        emails.push(email);
-                    });
-                });
-                
-                fetch.once('error', (err) => {
-                    reject(err);
-                });
-                
-                fetch.once('end', () => {
-                    imap.end();
-                    // Сортируем по дате (новые первыми)
-                    emails.sort((a, b) => b.seqno - a.seqno);
-                    resolve(emails);
-                });
-            });
-        });
-        
-        imap.once('error', (err) => {
-            reject(err);
-        });
-        
-        imap.connect();
-    });
-}
-
-function sendEmail({ from, password, smtpHost, smtpPort, to, subject, text }) {
-    return new Promise((resolve, reject) => {
-        const transporter = nodemailer.createTransporter({
-            host: smtpHost,
-            port: smtpPort,
-            secure: smtpPort === 465,
-            auth: {
-                user: from,
-                pass: password
-            },
-            tls: {
-                rejectUnauthorized: false
-            }
-        });
-        
-        const mailOptions = {
-            from: from,
-            to: to,
-            subject: subject,
-            text: text,
-            html: text.replace(/\n/g, '<br>')
-        };
-        
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                reject(error);
-            } else {
-                resolve(info);
-            }
-        });
-    });
-}
-
-function markAsRead({ email, password, imapHost, imapPort, messageIds }) {
-    return new Promise((resolve, reject) => {
-        const imap = new Imap({
-            user: email,
-            password: password,
-            host: imapHost,
-            port: imapPort,
-            tls: true,
-            tlsOptions: {
-                rejectUnauthorized: false
-            }
-        });
-        
-        imap.once('ready', () => {
-            imap.openBox('INBOX', false, (err, box) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
-                
-                // Mark messages as read
-                imap.addFlags(messageIds, '\\Seen', (err) => {
-                    imap.end();
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(true);
-                    }
-                });
-            });
-        });
-        
-        imap.once('error', (err) => {
-            reject(err);
-        });
-        
-        imap.connect();
-    });
-}
-
-function getFolders({ email, password, imapHost, imapPort }) {
-    return new Promise((resolve, reject) => {
-        const imap = new Imap({
-            user: email,
-            password: password,
-            host: imapHost,
-            port: imapPort,
-            tls: true,
-            tlsOptions: {
-                rejectUnauthorized: false
-            }
-        });
-        
-        imap.once('ready', () => {
-            imap.getBoxes((err, boxes) => {
-                imap.end();
-                if (err) {
-                    reject(err);
-                } else {
-                    const folderList = extractFolderNames(boxes);
-                    resolve(folderList);
-                }
-            });
-        });
-        
-        imap.once('error', (err) => {
-            reject(err);
-        });
-        
-        imap.connect();
-    });
-}
-
-function extractFolderNames(boxes, prefix = '') {
-    const folders = [];
-    for (const name in boxes) {
-        const fullName = prefix + name;
-        folders.push({
-            name: fullName,
-            delimiter: boxes[name].delimiter,
-            children: boxes[name].children
-        });
-        
-        if (boxes[name].children) {
-            folders.push(...extractFolderNames(boxes[name].children, fullName + boxes[name].delimiter));
-        }
-    }
-    return folders;
-}
-
-// Error handler
 app.use((err, req, res, next) => {
-    console.error('Error:', err);
-    res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-    });
+    logger.error(`Необработанная ошибка сервера: ${err.stack}`);
+    res.status(500).json({ success: false, error: 'Internal server error' });
 });
 
-// Start server
 app.listen(PORT, () => {
     console.log(`
 ╭─────────────────────────────────────────╮
-│           📧 Email Client Server        │
+│         📧 Email Client Server         │
 │                                         │
 │  Server running on: http://localhost:${PORT}  │
 │                                         │
-│  Features:                              │
+│  Features:                             │
 │  ✓ IMAP email fetching                  │
 │  ✓ SMTP email sending                   │
 │  ✓ Multiple account management          │
@@ -483,15 +265,15 @@ app.listen(PORT, () => {
 │  • Custom IMAP/SMTP servers             │
 ╰─────────────────────────────────────────╯
     `);
+    logger.info(`Сервер запущен на порту ${PORT}.`);
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
-    console.log('Server shutting down gracefully...');
+    logger.info('Сервер завершает работу...');
     process.exit(0);
 });
 
 process.on('SIGINT', () => {
-    console.log('\nServer shutting down gracefully...');
+    logger.info('Сервер завершает работу...');
     process.exit(0);
 });

@@ -1,36 +1,37 @@
 {
-  "name": "imap-smtp-client",
+  "name": "email-client-server",
   "version": "1.0.0",
-  "description": "IMAP/SMTP Email Client for managing multiple email accounts",
+  "description": "Email client server with IMAP/SMTP support, logging, and custom API integration",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "install-deps": "npm install"
+    "lint": "eslint ."
   },
   "keywords": [
+    "email",
     "imap",
     "smtp",
-    "email",
-    "client",
-    "gmail",
-    "outlook",
-    "mail"
+    "express",
+    "logger",
+    "api"
   ],
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2",
+    "axios": "^1.7.0",
+    "express": "^4.19.0",
+    "express-validator": "^7.0.1",
     "imap": "^0.8.19",
-    "node-pop3": "^0.8.2",
-    "nodemailer": "^6.9.7",
-    "mailparser": "^3.6.5",
-    "axios": "^1.6.2"
+    "mailparser": "^3.7.1",
+    "nodemailer": "^6.9.13",
+    "winston": "^3.13.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "eslint": "^8.57.0",
+    "nodemon": "^3.1.0"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=18.0.0"
   }
 }
